@@ -18,7 +18,7 @@ MY_TZ=${MY_TZ:-Asia/Yekaterinburg}
 read -rp "Логин для всех панелей: " ADMIN_USER
 ADMIN_USER=${ADMIN_USER:-"admin"}
 read -rsp "Пароль для всех панелей: " ADMIN_PASS
-ADMIN_PASS=${ADMIN_PASS:-"admin123"}
+ADMIN_PASS=${ADMIN_PASS:-"MyP@ssw0rd!2026"}
 echo -e "\n${GREEN}Данные получены. Начинаем развёртывание...${NC}"
 
 PROJECT_DIR="$HOME/my-server"
@@ -190,26 +190,24 @@ else
     echo -e "${GREEN}Portainer уже инициализирован (пропуск).${NC}"
 fi
 
-# --- 13. Настройка Nginx Proxy Manager (SQLite) ---
+# --- 13. Настройка NPM (Обновленная структура 2026) ---
 echo -e "${BLUE}>>> 13. Настройка NPM...${NC}"
 NPM_DB="data/npm/database.sqlite"
 
-echo -n "Ожидание базы NPM"
+# Ожидание готовности таблиц
 for i in {1..30}; do
-    if [ -f "$NPM_DB" ]; then
-        if sqlite3 "$NPM_DB" "SELECT 1 FROM user WHERE id = 1;" >/dev/null 2>&1; then
-            break
-        fi
-    fi
+    if [ -f "$NPM_DB" ] && sqlite3 "$NPM_DB" ".tables" | grep -q "auth"; then break; fi
     echo -n "."; sleep 2
 done
-echo
 
-if [ -f "$NPM_DB" ] && sqlite3 "$NPM_DB" "SELECT 1 FROM user WHERE id = 1;" >/dev/null 2>&1; then
-    sqlite3 "$NPM_DB" "UPDATE user SET password = '$BCRYPT_HASH', email = '${ADMIN_USER}@${MY_DOMAIN}' WHERE id = 1;"
-    echo -e "${GREEN}NPM: пароль и email обновлены.${NC}"
+if [ -f "$NPM_DB" ]; then
+    # 1. Обновляем почту в таблице user
+    sqlite3 "$NPM_DB" "UPDATE user SET email = '${ADMIN_USER}@${MY_DOMAIN}' WHERE id = 1;"
+    # 2. Обновляем хэш пароля в таблице auth
+    sqlite3 "$NPM_DB" "UPDATE auth SET secret = '$BCRYPT_HASH' WHERE user_id = 1 AND type = 'password';"
+    echo -e "${GREEN}NPM: Данные успешно обновлены в двух таблицах.${NC}"
 else
-    echo -e "${YELLOW}NPM: не удалось обновить учётную запись. Используйте admin@example.com / changeme.${NC}"
+    echo -e "${RED}Ошибка: База NPM не найдена.${NC}"
 fi
 
 # --- 14. Автоматическая настройка прокси через NPM API (с проверкой DNS) ---
