@@ -12,10 +12,13 @@ fi
 
 echo -e "${BLUE}>>> 1. Сбор данных...${NC}"
 read -rp "Введите ваш домен (например, hldpro.ru): " MY_DOMAIN
+MY_DOMAIN=${MY_DOMAIN:-"hldpro.ru"}
 read -rp "Таймзона (по умолчанию Asia/Yekaterinburg): " MY_TZ
 MY_TZ=${MY_TZ:-Asia/Yekaterinburg}
 read -rp "Логин для всех панелей: " ADMIN_USER
+ADMIN_USER=${ADMIN_USER:-"admin"}
 read -rsp "Пароль для всех панелей: " ADMIN_PASS
+ADMIN_PASS=${ADMIN_PASS:-"admin123"}
 echo -e "\n${GREEN}Данные получены. Начинаем развёртывание...${NC}"
 
 PROJECT_DIR="$HOME/my-server"
@@ -122,7 +125,8 @@ echo "nameserver 8.8.8.8" > /etc/resolv.conf
 cat > docker-compose.yml <<EOF
 services:
   npm:
-    image: jc21/nginx-proxy-manager:latest
+    # Заменяем Docker Hub на GitHub Registry
+    image: ghcr.io/jc21/nginx-proxy-manager:latest
     restart: unless-stopped
     ports:
       - "80:80"
@@ -135,7 +139,6 @@ services:
       - ./data/letsencrypt:/etc/letsencrypt
 
   3x-ui:
-    # Используем правильный образ от MHSanaei
     image: ghcr.io/mhsanaei/3x-ui:latest
     restart: unless-stopped
     network_mode: host
@@ -146,7 +149,8 @@ services:
       - ./data/3x-ui:/etc/xray-ui
 
   adguard:
-    image: adguard/adguardhome:latest
+    # Заменяем Docker Hub на GitHub Registry
+    image: ghcr.io/adguard/adguardhome:latest
     restart: unless-stopped
     network_mode: host
     volumes:
@@ -154,7 +158,8 @@ services:
       - ./data/adguard/conf:/opt/adguardhome/conf
 
   portainer:
-    image: portainer/portainer-ce:latest
+    # Заменяем Docker Hub на GitHub Registry
+    image: ghcr.io/portainer/portainer-ce:latest
     restart: unless-stopped
     ports:
       - "9000:9000"
