@@ -108,17 +108,29 @@ else
     echo -e "${YELLOW}Инфо: Portainer уже инициализирован или ответ: $RESPONSE${NC}"
 fi
 
-# --- 8. Настройка NPM Database (с проверкой) ---
+# --- 8. Настройка NPM Database + перезапуск ---
 echo -e "${BLUE}>>> 8. Настройка базы данных NPM...${NC}"
 NPM_DB="data/npm/database.sqlite"
+
+# Ждём появления базы и таблицы auth
 for i in {1..30}; do
-    if [ -s "$NPM_DB" ] && sqlite3 "$NPM_DB" ".tables" 2>/dev/null | grep -q "auth"; then break; fi
-    echo -n "."; sleep 2
+    if [ -s "$NPM_DB" ] && sqlite3 "$NPM_DB" ".tables" 2>/dev/null | grep -q "auth"; then
+        break
+    fi
+    echo -n "."
+    sleep 2
 done
 echo ""
+
+# Обновляем email и пароль
 sqlite3 "$NPM_DB" "UPDATE user SET email = '${ADMIN_USER}@${MY_DOMAIN}' WHERE id = 1;"
 sqlite3 "$NPM_DB" "UPDATE auth SET secret = '$BCRYPT_HASH' WHERE user_id = 1 AND type = 'password';"
 echo -e "${GREEN}Данные администратора внедрены в базу NPM.${NC}"
+
+# 🔁 КРИТИЧЕСКИ ВАЖНО: перезапустить NPM, чтобы он перечитал БД!
+echo -e "${YELLOW}Перезапуск NPM для применения новых учётных данных...${NC}"
+docker compose restart npm
+sleep 10  # даём время на полную инициализацию
 
 # --- 9. Автоматизация прокси и SSL ---
 echo -e "${BLUE}>>> 9. Проверка DNS и создание Proxy Hosts...${NC}"
