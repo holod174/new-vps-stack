@@ -140,62 +140,75 @@ for sub in "${!SERVICES[@]}"; do
 done
 
 if [ "$ALL_DNS_OK" = true ]; then
-    echo -e "${YELLOW}Все DNS-записи верны. Ожидание запуска API NPM (порт 81)...${NC}"
-    NPM_API="http://127.0.0.1:81/api"
+    echo -e "${YELLOW}Все DNS-записи верны. Ожидание готовности Nginx Proxy Manager (порт 81)...${NC}"
     
-    # Цикл ожидания доступности порта 81
-    for i in {1..30}; do
-        if curl -s -4 "http://127.0.0.1:81" >/dev/null; then
-            echo -e "${GREEN}API NPM доступно.${NC}"
+    # Ждём, пока NPM начнёт отвечать
+    for i in {1..40}; do
+        if curl -s --connect-timeout 3 "http://127.0.0.1:81" >/dev/null 2>&1; then
+            echo -e "${GREEN}✅ NPM готов к работе.${NC}"
             break
         fi
         echo -n "."
         sleep 3
-        if [ $i -eq 30 ]; then echo -e "${RED}Ошибка: NPM API не ответил за 90 сек.${NC}"; exit 1; fi
+        if [ $i -eq 40 ]; then
+            echo -e "\n${RED}❌ NPM не запустился за 2 минуты. Проверьте логи: docker logs my-server-npm-1${NC}"
+            exit 1
+        fi
     done
 
-    # Получение токена
+    NPM_API="http://127.0.0.1:81/api"
+
+    # Авторизация
     echo -e "Авторизация в NPM..."
-    AUTH_RESP=$(curl -s -4 -X POST "$NPM_API/tokens" \
+    AUTH_RESP=$(curl -s -X POST "$NPM_API/tokens" \
         -H "Content-Type: application/json" \
         -d "{\"identity\":\"$ADMIN_USER@$MY_DOMAIN\",\"password\":\"$ADMIN_PASS\"}")
-    
-    TOKEN=$(echo "$AUTH_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || echo "")
 
-    if [ -n "$TOKEN" ]; then
-        echo -e "${GREEN}Токен получен. Создаем хосты...${NC}"
-        for sub in "${!SERVICES[@]}"; do
-            port=${SERVICES[$sub]}
-            echo -n "Настройка https://$sub.$MY_DOMAIN... "
-            
-            PAYLOAD=$(cat <<EOF
+    TOKEN=$(echo "$AUTH_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+    if [ -z "$TOKEN" ]; then
+        echo -e "${RED}❌ Не удалось авторизоваться в NPM. Возможно, пароль ещё не применён или NPM не завершил инициализацию.${NC}"
+        echo -e "Попробуйте подождать 1-2 минуты и запустить скрипт повторно с флагом debug:"
+        echo -e "  sudo ./install.sh debug"
+        exit 1
+    fi
+
+    echo -e "${GREEN}✅ Токен получен. Создаём прокси-хосты...${NC}"
+    for sub in "${!SERVICES[@]}"; do
+        port=${SERVICES[$sub]}
+        full_domain="$sub.$MY_DOMAIN"
+        echo -n "  → https://$full_domain ... "
+
+        PAYLOAD=$(cat <<EOF
 {
-  "domain_names": ["$sub.$MY_DOMAIN"],
+  "domain_names": ["$full_domain"],
   "forward_host": "$CURRENT_IP",
   "forward_port": $port,
   "certificate_id": "new",
   "ssl_forced": true,
   "http2_support": true,
-  "meta": { "letsencrypt_email": "$ADMIN_USER@$MY_DOMAIN", "letsencrypt_agree": true }
+  "meta": {
+    "letsencrypt_email": "$ADMIN_USER@$MY_DOMAIN",
+    "letsencrypt_agree": true
+  }
 }
 EOF
-)
-            RESP=$(curl -s -4 -X POST "$NPM_API/nginx/proxy-hosts" \
-                -H "Authorization: Bearer $TOKEN" \
-                -H "Content-Type: application/json" \
-                -d "$PAYLOAD")
-            
-            if echo "$RESP" | grep -q '"id"'; then
-                echo -e "${GREEN}OK${NC}"
-            else
-                echo -e "${RED}Ошибка создания (проверьте логи NPM)${NC}"
-            fi
-        done
-    else
-        echo -e "${RED}Не удалось получить токен API. Ответ: $AUTH_RESP${NC}"
-    fi
+        )
+
+        RESP=$(curl -s -X POST "$NPM_API/nginx/proxy-hosts" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+        if echo "$RESP" | grep -q '"id"'; then
+            echo -e "${GREEN}OK${NC}"
+        else
+            echo -e "${RED}FAIL${NC}"
+            echo "Ответ: $RESP" >&2
+        fi
+    done
 else
-    echo -e "${RED}ВНИМАНИЕ: Авто-выпуск SSL пропущен, так как DNS еще не указывает на этот сервер.${NC}"
+    echo -e "${RED}ВНИМАНИЕ: Авто-выпуск SSL пропущен, так как DNS ещё не указывает на этот сервер.${NC}"
 fi
 
 # --- 10. ФИНАЛЬНЫЙ ОТЧЕТ (Расширенный) ---
