@@ -140,15 +140,34 @@ for sub in "${!SERVICES[@]}"; do
 done
 
 if [ "$ALL_DNS_OK" = true ]; then
-    echo -e "${YELLOW}Все DNS-записи верны. Запускаем создание HTTPS прокси...${NC}"
-    NPM_API="http://localhost:81/api"
-    AUTH_RESP=$(curl -s -X POST "$NPM_API/tokens" -H "Content-Type: application/json" -d "{\"identity\":\"$ADMIN_USER@$MY_DOMAIN\",\"password\":\"$ADMIN_PASS\"}")
-    TOKEN=$(echo "$AUTH_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+    echo -e "${YELLOW}Все DNS-записи верны. Ожидание запуска API NPM (порт 81)...${NC}"
+    NPM_API="http://127.0.0.1:81/api"
+    
+    # Цикл ожидания доступности порта 81
+    for i in {1..30}; do
+        if curl -s -4 "http://127.0.0.1:81" >/dev/null; then
+            echo -e "${GREEN}API NPM доступно.${NC}"
+            break
+        fi
+        echo -n "."
+        sleep 3
+        if [ $i -eq 30 ]; then echo -e "${RED}Ошибка: NPM API не ответил за 90 сек.${NC}"; exit 1; fi
+    done
+
+    # Получение токена
+    echo -e "Авторизация в NPM..."
+    AUTH_RESP=$(curl -s -4 -X POST "$NPM_API/tokens" \
+        -H "Content-Type: application/json" \
+        -d "{\"identity\":\"$ADMIN_USER@$MY_DOMAIN\",\"password\":\"$ADMIN_PASS\"}")
+    
+    TOKEN=$(echo "$AUTH_RESP" | grep -o '"token":"[^"]*"' | cut -d'"' -f4 || echo "")
 
     if [ -n "$TOKEN" ]; then
+        echo -e "${GREEN}Токен получен. Создаем хосты...${NC}"
         for sub in "${!SERVICES[@]}"; do
             port=${SERVICES[$sub]}
-            echo -n "Создание хоста для $sub.$MY_DOMAIN... "
+            echo -n "Настройка https://$sub.$MY_DOMAIN... "
+            
             PAYLOAD=$(cat <<EOF
 {
   "domain_names": ["$sub.$MY_DOMAIN"],
@@ -161,12 +180,22 @@ if [ "$ALL_DNS_OK" = true ]; then
 }
 EOF
 )
-            RESP=$(curl -s -X POST "$NPM_API/nginx/proxy-hosts" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$PAYLOAD")
-            if echo "$RESP" | grep -q '"id"'; then echo -e "${GREEN}OK${NC}"; else echo -e "${RED}Ошибка${NC}"; fi
+            RESP=$(curl -s -4 -X POST "$NPM_API/nginx/proxy-hosts" \
+                -H "Authorization: Bearer $TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$PAYLOAD")
+            
+            if echo "$RESP" | grep -q '"id"'; then
+                echo -e "${GREEN}OK${NC}"
+            else
+                echo -e "${RED}Ошибка создания (проверьте логи NPM)${NC}"
+            fi
         done
+    else
+        echo -e "${RED}Не удалось получить токен API. Ответ: $AUTH_RESP${NC}"
     fi
 else
-    echo -e "${RED}ВНИМАНИЕ: Авто-выпуск SSL пропущен из-за DNS.${NC}"
+    echo -e "${RED}ВНИМАНИЕ: Авто-выпуск SSL пропущен, так как DNS еще не указывает на этот сервер.${NC}"
 fi
 
 # --- 10. ФИНАЛЬНЫЙ ОТЧЕТ (Расширенный) ---
