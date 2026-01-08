@@ -121,22 +121,16 @@ systemctl disable systemd-resolved
 rm -f /etc/resolv.conf
 echo "nameserver 8.8.8.8" > /etc/resolv.conf
 
-# --- 10. docker-compose.yml ---
+# --- 10. docker-compose.yml (Исправленные образы) ---
 cat > docker-compose.yml <<EOF
 services:
   npm:
-    # Заменяем Docker Hub на GitHub Registry
-    image: ghcr.io/jc21/nginx-proxy-manager:latest
+    image: jc21/nginx-proxy-manager:latest
     restart: unless-stopped
-    ports:
-      - "80:80"
-      - "81:81"
-      - "443:443"
+    ports: ["80:80", "81:81", "443:443"]
     environment:
       - TZ=$MY_TZ
-    volumes:
-      - ./data/npm:/data
-      - ./data/letsencrypt:/etc/letsencrypt
+    volumes: ["./data/npm:/data", "./data/letsencrypt:/etc/letsencrypt"]
 
   3x-ui:
     image: ghcr.io/mhsanaei/3x-ui:latest
@@ -145,27 +139,19 @@ services:
     environment:
       - X_UI_ADMIN_USER=$ADMIN_USER
       - X_UI_ADMIN_PWD=$ADMIN_PASS
-    volumes:
-      - ./data/3x-ui:/etc/xray-ui
+    volumes: ["./data/3x-ui:/etc/xray-ui"]
 
   adguard:
-    # Заменяем Docker Hub на GitHub Registry
-    image: ghcr.io/adguard/adguardhome:latest
+    image: adguard/adguardhome:latest
     restart: unless-stopped
     network_mode: host
-    volumes:
-      - ./data/adguard/work:/opt/adguardhome/work
-      - ./data/adguard/conf:/opt/adguardhome/conf
+    volumes: ["./data/adguard/work:/opt/adguardhome/work", "./data/adguard/conf:/opt/adguardhome/conf"]
 
   portainer:
-    # Заменяем Docker Hub на GitHub Registry
-    image: ghcr.io/portainer/portainer-ce:latest
+    image: portainer/portainer-ce:latest
     restart: unless-stopped
-    ports:
-      - "9000:9000"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./data/portainer:/data
+    ports: ["9000:9000"]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock", "./data/portainer:/data"]
 EOF
 
 # --- 11. Запуск контейнеров ---
