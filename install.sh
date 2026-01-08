@@ -34,10 +34,10 @@ fi
 
 # --- 3. Установка зависимостей и Docker ---
 echo -e "${BLUE}>>> 3. Установка Docker и утилит...${NC}"
-apt install -y git curl ufw fail2ban openssl sqlite3 ca-certificates gnupg lsb-release dnsutils
+# Мы добавили apache2-utils — это даст нам команду htpasswd
+apt install -y git curl ufw fail2ban openssl sqlite3 ca-certificates gnupg lsb-release dnsutils apache2-utils
 
-if ! command -v docker &> /dev/null || ! command -v docker-compose &> /dev/null; then
-    echo -e "${YELLOW}Docker не найден — устанавливаем...${NC}"
+if ! command -v docker &> /dev/null; then
     curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
     sh /tmp/get-docker.sh
     rm -f /tmp/get-docker.sh
@@ -59,14 +59,15 @@ fi
 
 # --- 4. Генерация хешей ---
 echo -e "${BLUE}>>> 4. Генерация безопасных хешей...${NC}"
-ADG_HASH=$(openssl passwd -6 "$ADMIN_PASS")  # Для AdGuard (SHA-512 crypt)
 
-BCRYPT_HASH=$(docker run --rm -i node:alpine sh -c "
-    echo '$ADMIN_PASS' | node -e '
-        const bcrypt = require(\"bcryptjs\");
-        process.stdin.once(\"data\", pwd => console.log(bcrypt.hashSync(pwd.toString().trim(), 8)));
-    '
-")
+# Генерируем bcrypt хеш (cost 8) для NPM и AdGuard
+# Это работает мгновенно и без ошибок Node.js
+BCRYPT_HASH=$(htpasswd -nbBC 8 "" "$ADMIN_PASS" | cut -d ":" -f 2)
+
+# AdGuard прекрасно понимает bcrypt, поэтому используем один и тот же хеш
+ADG_HASH="$BCRYPT_HASH"
+
+echo -e "${GREEN}Хеши успешно созданы.${NC}"
 
 # --- 5. Настройка UFW ---
 echo -e "${BLUE}>>> 5. Настройка Firewall (UFW)...${NC}"
