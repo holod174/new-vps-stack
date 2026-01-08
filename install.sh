@@ -120,7 +120,6 @@ echo "nameserver 8.8.8.8" > /etc/resolv.conf
 
 # --- 10. docker-compose.yml ---
 cat > docker-compose.yml <<EOF
-version: '3.8'
 services:
   npm:
     image: jc21/nginx-proxy-manager:latest
@@ -136,7 +135,8 @@ services:
       - ./data/letsencrypt:/etc/letsencrypt
 
   3x-ui:
-    image: ghcr.io/m0neit/3x-ui:latest
+    # Используем правильный образ от MHSanaei
+    image: ghcr.io/mhsanaei/3x-ui:latest
     restart: unless-stopped
     network_mode: host
     environment:
@@ -146,7 +146,7 @@ services:
       - ./data/3x-ui:/etc/xray-ui
 
   adguard:
-    image: adguard/adguardhome
+    image: adguard/adguardhome:latest
     restart: unless-stopped
     network_mode: host
     volumes:
